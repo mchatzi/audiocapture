@@ -56,10 +56,10 @@ public final class SPLViewer implements SPLModule {
 
                 int count = pullBuffer.read(frameSamples);
                 if (count > 0) {
-                    int updateIndex = 0;
-                    double processingTimeUpToNow;
-                    double remainingTimeForRestOfFrame;
-                    long begin = System.nanoTime();
+                    //int updateIndex = 0;
+                    //double processingTimeUpToNow;
+                    //double remainingTimeForRestOfFrame;
+                    //long begin = System.nanoTime();
 
 
                     for (int i = 0; i < count; i++) {
@@ -68,7 +68,7 @@ public final class SPLViewer implements SPLModule {
                         //}
 
 
-                        if ((i + 1) % SAMPLES_PER_UPDATE == 0) {
+                        /*if ((i + 1) % SAMPLES_PER_UPDATE == 0) {
                             processingTimeUpToNow = (System.nanoTime() - begin) / 1000000.0;
                             remainingTimeForRestOfFrame = 1000 - processingTimeUpToNow;
                             if (remainingTimeForRestOfFrame >= 0) {
@@ -79,7 +79,7 @@ public final class SPLViewer implements SPLModule {
                             }
 
                             updateIndex++;
-                        }
+                        }*/
                     }
 
                     g.drawString(String.valueOf((System.currentTimeMillis() - captureBeginTime) / 1000), (int) cursor_x, (height / 2) + 200);
@@ -87,7 +87,7 @@ public final class SPLViewer implements SPLModule {
                     //logger.debug("Processing finished at: " + (System.nanoTime() - begin) / 1000000);
 
                 }
-            } catch (IOException | InterruptedException e) {
+            } catch (IOException /*| InterruptedException*/ e) {
                 e.printStackTrace();
             }
         }
