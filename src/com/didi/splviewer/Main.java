@@ -236,9 +236,9 @@ class SPLViewer implements SPLModule {
                     long begin = System.nanoTime();
 
                     for (int i = 0; i < count; i++) {
-                        synchronized (g) {
-                            printSample(g, frameSamples[i]);
-                        }
+                        //synchronized (g) {
+                        printSample(g, frameSamples[i]);
+                        //}
                         if ((i + 1) % SAMPLES_PER_UPDATE == 0) {
                             processingTimeUpToNow = (System.nanoTime() - begin) / 1000000.0;
                             remainingTimeForRestOfFrame = 1000 - processingTimeUpToNow;
