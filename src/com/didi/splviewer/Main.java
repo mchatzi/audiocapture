@@ -9,8 +9,6 @@ import java.awt.Graphics;
 import java.awt.Label;
 import java.awt.Panel;
 import java.awt.TextField;
-import java.awt.event.ActionEvent;
-import java.awt.event.ActionListener;
 import java.awt.event.ComponentAdapter;
 import java.awt.event.ComponentEvent;
 import java.awt.event.WindowAdapter;
@@ -31,6 +29,25 @@ import org.slf4j.LoggerFactory;
 import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.Logger;
 
+interface SPLModule extends Runnable {
+    default Container getView() {
+        return null;
+    }
+
+    default Container getOptionsPanel() {
+        return null;
+    }
+
+    default SPLModule begin() {
+        Thread splModuleThread = new Thread(this);
+        splModuleThread.setPriority(Thread.MAX_PRIORITY);
+        splModuleThread.start();
+        return this;
+    }
+
+    SPLModule shutdown();
+}
+
 
 public class Main {
 
@@ -43,13 +60,74 @@ public class Main {
         final PipedOutputStream pushBuffer = new PipedOutputStream();
         final PipedInputStream pullBuffer = new PipedInputStream(pushBuffer, AudioCapture.SAMPLE_RATE);
 
-        new SPLViewer(pullBuffer).start();
-        new AudioCapture(pushBuffer).start();
+
+        AudioCapture audioCapture = new AudioCapture(pushBuffer);
+        SPLViewer splViewer = new SPLViewer(pullBuffer);
+
+
+        final Frame mainFrame = new Frame();
+
+        /* ***********   Window mode  ************** */
+        int frameWidth = 1200;
+        int frameHeight = 600;
+        mainFrame.setSize(frameWidth, frameHeight);
+
+        mainFrame.addWindowListener(
+            new WindowAdapter() {
+                public void windowClosing(WindowEvent e) {
+                    mainFrame.dispose();
+                    System.exit(0);
+                }
+            });
+
+        /* ***********   Fullscreen mode  ************** */
+        /*frame.setUndecorated(true);
+        GraphicsEnvironment.getLocalGraphicsEnvironment().getDefaultScreenDevice().setFullScreenWindow(frame);
+        frame.addMouseListener(new MouseAdapter() { //->exit on click
+            public void mouseClicked(MouseEvent e) {
+                frame.dispose();
+                System.exit(0);
+            }
+        });*/
+
+
+        mainFrame.add(splViewer.getView());
+        mainFrame.setBackground(Color.BLUE);
+        mainFrame.setVisible(true);
+
+
+        Frame menuFrame = new Frame();
+        menuFrame.setBounds(100, frameHeight + 30, 680, 40);
+        menuFrame.setUndecorated(true);
+
+        Container splViewerOptions = splViewer.getOptionsPanel();
+
+
+        Button exitButton = new Button("Quit");
+        exitButton.addActionListener(e -> {
+            audioCapture.shutdown();
+            splViewer.shutdown();
+            System.exit(0);
+        });
+
+
+        splViewerOptions.add(exitButton);
+
+
+        splViewerOptions.setBounds(0, mainFrame.getY() - 1, frameWidth, 40);
+        menuFrame.add(splViewerOptions);
+        menuFrame.setVisible(true);
+
+
+        splViewer.begin();
+        audioCapture.begin();
+
+
     }
 }
 
 
-class AudioCapture extends Thread {
+class AudioCapture implements SPLModule {
 
     /**
      * SETTINGS
@@ -62,6 +140,7 @@ class AudioCapture extends Thread {
 
     private static Logger logger = (Logger) LoggerFactory.getLogger(AudioCapture.class);
     private final PipedOutputStream pushBuffer;
+    private boolean EXIT_FLAG = false;
 
     public AudioCapture(PipedOutputStream pushBuffer) {
         this.pushBuffer = pushBuffer;
@@ -86,26 +165,37 @@ class AudioCapture extends Thread {
         final TargetDataLine line;
         try {
             line = (TargetDataLine) mixer.getLine(
-                    new DataLine.Info(TargetDataLine.class, format));
+                new DataLine.Info(TargetDataLine.class, format));
             line.open(format);
             line.start();
 
             int bufferSize = (int) format.getSampleRate(); //* format.getFrameSize();
             byte buffer[] = new byte[bufferSize];
-            while (true) {
+
+            //Main loop
+            while (!EXIT_FLAG) {
                 int count = line.read(buffer, 0, buffer.length);
                 if (count > 0) {
                     pushBuffer.write(buffer);
                 }
             }
+
+            pushBuffer.close();
+
         } catch (LineUnavailableException | IOException e) {
             e.printStackTrace();
         }
     }
+
+    @Override
+    public AudioCapture shutdown() {
+        EXIT_FLAG = true;
+        return this;
+    }
 }
 
 
-class SPLViewer extends Thread {
+class SPLViewer implements SPLModule {
 
     /**
      * SETTINGS
@@ -125,17 +215,20 @@ class SPLViewer extends Thread {
     private int width, height;
     private double cursor_x = -1;
     PipedInputStream pullBuffer;
+    private boolean EXIT_FLAG = false;
 
     private int SAMPLES_PER_UPDATE = AudioCapture.SAMPLE_RATE / UPDATES_PER_SECOND;
 
     @Override
     public void run() {
-        Graphics g = viewerContainer.getGraphics();
         byte[] frameSamples = new byte[AudioCapture.SAMPLE_RATE];
-
-        while (true) {
+        while (!EXIT_FLAG) {
             try {
+                Graphics g = viewerContainer.getGraphics();
+                g.setColor(Color.WHITE);
+
                 int count = pullBuffer.read(frameSamples);
+                logger.warn("Ive read {} samplees", count);
                 if (count > 0) {
                     int updateIndex = 0;
                     double processingTimeUpToNow;
@@ -151,14 +244,17 @@ class SPLViewer extends Thread {
                             remainingTimeForRestOfFrame = 1000 - processingTimeUpToNow;
                             if (remainingTimeForRestOfFrame >= 0) {
                                 double newSleeptimePerRemainingUpdate = remainingTimeForRestOfFrame / (UPDATES_PER_SECOND - updateIndex + 1);
-                                sleep((long) newSleeptimePerRemainingUpdate);
+                                Thread.sleep((long) newSleeptimePerRemainingUpdate);
                             } else {
-                                logger.warn("Out of TIME at loop" + updateIndex + " time=" + (-remainingTimeForRestOfFrame) + " frame processing time up to now=" + processingTimeUpToNow);
+                                logger.warn("Out of TIME at loop " + updateIndex + " time=" + (-remainingTimeForRestOfFrame) + " frame processing time up to now=" + processingTimeUpToNow);
                             }
 
                             updateIndex++;
                         }
                     }
+
+                    g.drawString("e", (int) cursor_x, (height / 2) + 200);
+
                     logger.debug("Processing finished at: " + (System.nanoTime() - begin) / 1000000);
 
                 }
@@ -166,8 +262,19 @@ class SPLViewer extends Thread {
                 e.printStackTrace();
             }
         }
+
+        try {
+            pullBuffer.close();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
     }
 
+    @Override
+    public SPLViewer shutdown() {
+        EXIT_FLAG = true;
+        return this;
+    }
 
     private void printSample(Graphics g, double value) {
         if (cursor_x >= width) {
@@ -183,32 +290,6 @@ class SPLViewer extends Thread {
 
     public SPLViewer(final PipedInputStream pullBuffer) {
         this.pullBuffer = pullBuffer;
-        final Frame mainFrame = new Frame();
-
-        /* ***********   Window mode  ************** */
-        int frameWidth = 1200;
-        int frameHeight = 600;
-        mainFrame.setSize(frameWidth, frameHeight);
-
-        mainFrame.addWindowListener(
-                new WindowAdapter() {
-                    public void windowClosing(WindowEvent e) {
-                        mainFrame.dispose();
-                        System.exit(0);
-                    }
-                });
-
-        /* ***********   Fullscreen mode  ************** */
-        /*frame.setUndecorated(true);
-        GraphicsEnvironment.getLocalGraphicsEnvironment().getDefaultScreenDevice().setFullScreenWindow(frame);
-        frame.addMouseListener(new MouseAdapter() { //->exit on click
-            public void mouseClicked(MouseEvent e) {
-                frame.dispose();
-                System.exit(0);
-            }
-        });*/
-
-
         viewerContainer = new Container();
         viewerContainer.addComponentListener(new ComponentAdapter() {
             @Override
@@ -218,13 +299,18 @@ class SPLViewer extends Thread {
                 cursor_x = 0;
             }
         });
+    }
 
-        mainFrame.add(viewerContainer);
-        mainFrame.setVisible(true);
+    @Override
+    public Container getView() {
+        return viewerContainer;
+    }
 
+    @Override
+    public Panel getOptionsPanel() {
         Panel menuPanel = new Panel();
-        TextField refreshRate = new TextField(" " + UPDATES_PER_SECOND);
-        TextField horizontalZoom = new TextField(" " + X_ZOOM_LEVEL);
+        TextField refreshRate = new TextField("  " + UPDATES_PER_SECOND);
+        TextField horizontalZoom = new TextField("  " + X_ZOOM_LEVEL);
         TextField verticalZoom = new TextField(String.valueOf(Y_ZOOM_LEVEL));
         menuPanel.add(new Label("Viewer refresh rate (Hz):"));
         menuPanel.add(refreshRate);
@@ -232,27 +318,21 @@ class SPLViewer extends Thread {
         menuPanel.add(horizontalZoom);
         menuPanel.add(new Label("   Vertical zoom:"));
         menuPanel.add(verticalZoom);
-        Button button = new Button("Yes");
-        button.addActionListener(new ActionListener() {
-            @Override
-            public void actionPerformed(final ActionEvent e) {
-                synchronized (viewerContainer.getGraphics()) {
-                    UPDATES_PER_SECOND = Integer.parseInt(refreshRate.getText().trim());
-                    SAMPLES_PER_UPDATE = AudioCapture.SAMPLE_RATE / UPDATES_PER_SECOND;
-                    X_ZOOM_LEVEL = Integer.parseInt(horizontalZoom.getText().trim());
-                    Y_ZOOM_LEVEL = Double.parseDouble(verticalZoom.getText().trim());
-                    viewerContainer.getGraphics().clearRect(0, 0, viewerContainer.getWidth(), viewerContainer.getHeight());
-                    cursor_x = 0;
-                }
+
+        Button button = new Button("Yes!");
+        button.addActionListener(e -> {
+            synchronized (viewerContainer.getGraphics()) {
+                UPDATES_PER_SECOND = Integer.parseInt(refreshRate.getText().trim());
+                SAMPLES_PER_UPDATE = AudioCapture.SAMPLE_RATE / UPDATES_PER_SECOND;
+                X_ZOOM_LEVEL = Integer.parseInt(horizontalZoom.getText().trim());
+                Y_ZOOM_LEVEL = Double.parseDouble(verticalZoom.getText().trim());
+                viewerContainer.getGraphics().clearRect(0, 0, viewerContainer.getWidth(), viewerContainer.getHeight());
+                cursor_x = 0;
             }
         });
         menuPanel.add(button);
         menuPanel.setBackground(Color.YELLOW);
-        menuPanel.setBounds(0, mainFrame.getY() - 1, frameWidth, 40);
-        Frame menuFrame = new Frame();
-        menuFrame.setBounds(100, frameHeight + 30, 640, 40);
-        menuFrame.setUndecorated(true);
-        menuFrame.add(menuPanel);
-        menuFrame.setVisible(true);
+
+        return menuPanel;
     }
 }
