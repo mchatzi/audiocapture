@@ -9,12 +9,20 @@ import java.awt.event.ComponentEvent;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.io.IOException;
-import java.io.PipedInputStream;
-import java.io.PipedOutputStream;
+import java.util.concurrent.LinkedBlockingQueue;
 
 import org.slf4j.LoggerFactory;
 
 import ch.qos.logback.classic.Logger;
+
+
+class Sample {
+    long value = 0;
+
+    public Sample(long value) {
+        this.value = value;
+    }
+}
 
 
 public final class Main {
@@ -34,13 +42,10 @@ public final class Main {
 
     private Main() throws IOException {
 
-        //Audio capture reads in bytes, splViewer prints them out.
-        //For communicating, we setup a pipeline between the 2 threads (alternatively use a concurrent queue)
-        final PipedOutputStream pushBuffer = new PipedOutputStream();
-        final PipedInputStream pullBuffer = new PipedInputStream(pushBuffer, AudioCapture.SAMPLE_RATE * 10);
+        LinkedBlockingQueue<Sample> queue = new LinkedBlockingQueue<>();
 
-        audioCapture = new AudioCapture(pushBuffer);
-        splViewer = new SPLViewer(pullBuffer);
+        audioCapture = new AudioCapture(queue);
+        splViewer = new SPLViewer(queue);
 
         //Simple GUI
         mainFrame = new Frame();
@@ -116,6 +121,20 @@ public final class Main {
         applicationControlFrame.dispose();
         System.exit(0);
     }
+
+    public static void printTabular(final Object... values) {
+        int spaces = 22;
+        StringBuilder sb = new StringBuilder("   ");
+        for (Object value : values) {
+            String stringValue = String.valueOf(value);
+            sb.append(stringValue);
+            for (int i = 0; i < spaces - stringValue.length(); i++) {
+                sb.append(" ");
+            }
+        }
+        logger.warn(sb.toString());
+    }
+
 }
 
 

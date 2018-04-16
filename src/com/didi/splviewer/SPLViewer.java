@@ -9,8 +9,8 @@ import java.awt.Panel;
 import java.awt.TextField;
 import java.awt.event.ComponentAdapter;
 import java.awt.event.ComponentEvent;
-import java.io.IOException;
-import java.io.PipedInputStream;
+import java.util.LinkedList;
+import java.util.concurrent.LinkedBlockingQueue;
 
 import org.slf4j.LoggerFactory;
 
@@ -36,66 +36,82 @@ public final class SPLViewer implements SPLModule {
     private Container viewerContainer;
     private int width, height;
     private double cursor_x = -1;
-    private PipedInputStream pullBuffer;
+    private LinkedBlockingQueue<Sample> pullBuffer;
     private boolean EXIT_FLAG = false;
 
-    private int SAMPLES_PER_UPDATE = AudioCapture.SAMPLE_RATE / UPDATES_PER_SECOND;
+    private int SAMPLES_PER_UPDATE = AudioCapture.getSampleRate() / UPDATES_PER_SECOND;
 
     @Override
     public void run() {
-        byte[] frameSamples = new byte[AudioCapture.SAMPLE_RATE];
-        long captureBeginTime = System.currentTimeMillis();
+        long captureBeginTime = System.currentTimeMillis();  //No we don't restart the runnable every time a capture is stopped and started
 
         while (!EXIT_FLAG) {
             try {
                 Graphics g = viewerContainer.getGraphics();
                 g.setColor(Color.WHITE);
 
+                int updateIndex = 1;
+                long frameBeginTime = 0;
 
-                logger.warn("There are {} available", pullBuffer.available());
+                LinkedList<Sample> sampleBuffer = new LinkedList<>();
 
-                int count = pullBuffer.read(frameSamples);
-                if (count > 0) {
-                    //int updateIndex = 0;
-                    //double processingTimeUpToNow;
-                    //double remainingTimeForRestOfFrame;
-                    //long begin = System.nanoTime();
+                for (int sampleIndex = 1; sampleIndex <= AudioCapture.getSampleRate(); sampleIndex++) {
+                    Sample sample = pullBuffer.take();
 
-
-                    for (int i = 0; i < count; i++) {
-                        //synchronized (g) {
-                        printSample(g, frameSamples[i]);
-                        //}
-
-
-                        /*if ((i + 1) % SAMPLES_PER_UPDATE == 0) {
-                            processingTimeUpToNow = (System.nanoTime() - begin) / 1000000.0;
-                            remainingTimeForRestOfFrame = 1000 - processingTimeUpToNow;
-                            if (remainingTimeForRestOfFrame >= 0) {
-                                double newSleeptimePerRemainingUpdate = remainingTimeForRestOfFrame / (UPDATES_PER_SECOND - updateIndex + 1);
-                                Thread.sleep((long) newSleeptimePerRemainingUpdate);
-                            } else {
-                                logger.warn("Out of TIME at loop " + updateIndex + " time=" + (-remainingTimeForRestOfFrame) + " frame processing time up to now=" + processingTimeUpToNow);
-                            }
-
-                            updateIndex++;
-                        }*/
+                    if (sampleIndex == 1) {
+                        frameBeginTime = System.nanoTime();
+                        SAMPLES_PER_UPDATE = AudioCapture.getSampleRate() / UPDATES_PER_SECOND; //Need to recalculate this when we change audio capture settings
                     }
 
-                    g.drawString(String.valueOf((System.currentTimeMillis() - captureBeginTime) / 1000), (int) cursor_x, (height / 2) + 200);
+                    if (sample != null) {
+                        sampleBuffer.add(sample);
 
-                    //logger.debug("Processing finished at: " + (System.nanoTime() - begin) / 1000000);
+                        if (sampleIndex % SAMPLES_PER_UPDATE == 0) {
+                            long updateBeginTime = System.nanoTime();
 
+                            for (Sample bufferedSample = sampleBuffer.poll(); bufferedSample != null; bufferedSample = sampleBuffer.poll()) {
+                                synchronized (g) {
+                                    printSample(g, bufferedSample.value);
+                                }
+                            }
+
+                            updateSleepIntervalAndSleep(updateIndex, frameBeginTime, updateBeginTime);
+                            updateIndex++;
+                        }
+
+                        //logger.debug("Processing finished at: " + (System.nanoTime() - begin) / 1000000);
+                    } else {
+                        logger.error("Sample was NULL  - THIS SHOULDN'T HAPPEN, i = {}", sampleIndex);
+                    }
                 }
-            } catch (IOException /*| InterruptedException*/ e) {
+
+                g.drawString(String.valueOf((System.currentTimeMillis() - captureBeginTime) / 1000), (int) cursor_x, (height / 2) + 200);
+
+            } catch (InterruptedException e) {
                 e.printStackTrace();
             }
         }
+    }
 
-        try {
-            pullBuffer.close();
-        } catch (IOException e) {
-            e.printStackTrace();
+    private void updateSleepIntervalAndSleep(final int updateIndex, final long frameBeginTime, final long updateBeginTime) throws InterruptedException {
+        long timeNow = System.nanoTime();
+        long updateProcessingTime = timeNow - updateBeginTime;
+        long frameProcessingTime = timeNow - frameBeginTime;
+        long remainingTimeForRestOfFrame = 1000000000L - frameProcessingTime; //Audio source is giving us samples every 1000ms (1 sec)
+
+        //logger.warn("Update {}, remainingTimeForRestOfFrame: {}, updatetook:" + updateProcessingTime, updateIndex, remainingTimeForRestOfFrame);
+
+        if (remainingTimeForRestOfFrame >= 0L) {
+            int numberOfRemainingUpdates = UPDATES_PER_SECOND - updateIndex;
+            if (numberOfRemainingUpdates > 0) {
+                long newSleeptimePerUpdate = (remainingTimeForRestOfFrame - (numberOfRemainingUpdates * updateProcessingTime)) / numberOfRemainingUpdates;
+                logger.warn("Update: {}\t new sleeptime {}", updateIndex, newSleeptimePerUpdate);
+                if (newSleeptimePerUpdate > 0) {
+                    Thread.sleep(newSleeptimePerUpdate / 1000000L);
+                }
+            }
+        } else {
+            logger.warn("Out of TIME at sample " + (updateIndex * (AudioCapture.getSampleRate() / UPDATES_PER_SECOND)) + " (loop " + updateIndex + ", time=" + (-remainingTimeForRestOfFrame) + ", frame processing time up to now=" + frameProcessingTime);
         }
     }
 
@@ -105,19 +121,28 @@ public final class SPLViewer implements SPLModule {
         return this;
     }
 
-    private void printSample(Graphics g, double value) {
+
+    private void printSample(Graphics g, long value) {
         if (cursor_x >= width) {
             cursor_x = 0;
             g.clearRect(0, 0, width, height);
         }
-        int y1 = height / 2 + (int) (value * Y_ZOOM_LEVEL);
+
+
+        double ratio = (double) value / (1 << (AudioCapture.getSampleSizeInBits() - (AudioCapture.isSIGNED() ? 1 : 0)));
+        //int sign = value < 0 ? -1 : 1;
+        int y1 = height / 2 + (int) (ratio * (height / 2) * Y_ZOOM_LEVEL);
+        //Main.printTabular(value, ratio, y1);
+
+
         g.drawLine((int) cursor_x, y1, (int) cursor_x, y1);
         //cursor_x += 1;
-        cursor_x += (float) X_ZOOM_LEVEL / AudioCapture.SAMPLE_RATE;
+
+        cursor_x += (float) X_ZOOM_LEVEL / AudioCapture.getSampleRate();
     }
 
 
-    public SPLViewer(final PipedInputStream pullBuffer) {
+    public SPLViewer(final LinkedBlockingQueue<Sample> pullBuffer) {
         this.pullBuffer = pullBuffer;
         viewerContainer = new Container();
         viewerContainer.addComponentListener(new ComponentAdapter() {
@@ -152,7 +177,7 @@ public final class SPLViewer implements SPLModule {
         button.addActionListener(e -> {
             synchronized (viewerContainer.getGraphics()) {
                 UPDATES_PER_SECOND = Integer.parseInt(refreshRate.getText().trim());
-                SAMPLES_PER_UPDATE = AudioCapture.SAMPLE_RATE / UPDATES_PER_SECOND;
+                SAMPLES_PER_UPDATE = AudioCapture.getSampleRate() / UPDATES_PER_SECOND;
                 X_ZOOM_LEVEL = Integer.parseInt(horizontalZoom.getText().trim());
                 Y_ZOOM_LEVEL = Double.parseDouble(verticalZoom.getText().trim());
                 viewerContainer.getGraphics().clearRect(0, 0, viewerContainer.getWidth(), viewerContainer.getHeight());
