@@ -16,15 +16,6 @@ import org.slf4j.LoggerFactory;
 import ch.qos.logback.classic.Logger;
 
 
-class Sample {
-    long value = 0;
-
-    public Sample(long value) {
-        this.value = value;
-    }
-}
-
-
 public final class Main {
 
     private static Logger logger = (Logger) LoggerFactory.getLogger(Main.class);
@@ -42,7 +33,7 @@ public final class Main {
 
     private Main() throws IOException {
 
-        LinkedBlockingQueue<Sample> queue = new LinkedBlockingQueue<>();
+        LinkedBlockingQueue<Long> queue = new LinkedBlockingQueue<>();
 
         audioCapture = new AudioCapture(queue);
         splViewer = new SPLViewer(queue);
@@ -132,7 +123,7 @@ public final class Main {
                 sb.append(" ");
             }
         }
-        logger.warn(sb.toString());
+        System.out.println(sb.toString());
     }
 
 }

@@ -45,11 +45,11 @@ public final class AudioCapture implements SPLModule {
     public static final boolean BIG_ENDIAN = true;
 
     private static Logger logger = (Logger) LoggerFactory.getLogger(AudioCapture.class);
-    private final LinkedBlockingQueue<Sample> pushBuffer;
+    private final LinkedBlockingQueue<Long> pushBuffer;
     private boolean EXIT_FLAG = false;
     private boolean STOP_CAPTURE_FLAG = false;
 
-    public AudioCapture(LinkedBlockingQueue<Sample> pushBuffer) {
+    public AudioCapture(LinkedBlockingQueue<Long> pushBuffer) {
         this.pushBuffer = pushBuffer;
     }
 
@@ -98,37 +98,30 @@ public final class AudioCapture implements SPLModule {
                     }
                 }
 
-
-                //Assuming bytes need to be combined subsequently
-
                 for (int i = 0; i < buffer.length; i += frameSize) {
+                    //TODO   How can it be that bytes belonging to the same frame may have different signs?????
+                    //TODO      Is it perhaps only the 1st bit of the 1st byte (in big-endian) signed (and thus 7 bit of information for the first byte)
+                    //TODO     and the rest treated as signed while they really aren't? (so 8 bits and the 1st is now wrongly mistaken as the sign)
                     //int sign = buffer[i] < 0 ? -1 : 1;
 
                     long value = 0;
                     if (frameSize == 1) {
                         value = buffer[i];
                     } else if (frameSize == 2) {
-                        //Main.printTabular(i/2, buffer[i], buffer[i+1]);
                         value = (buffer[i] << 8) + buffer[i + 1];
                     } else if (frameSize == 3) {
-                        //Main.printTabular(buffer[i], buffer[i + 1], buffer[i + 2]);
                         value = (buffer[i] << 16) + (buffer[i + 1] << 8) + buffer[i + 2];
                     } else if (frameSize == 4) {
                         value = (buffer[i] << 24) + (buffer[i + 1] << 16) + (buffer[i + 2] << 8) + buffer[i + 3];
                     }
-
-                    //long sampleValue = sign * value;
-
-
-                    pushBuffer.offer(new Sample(value));
+                    pushBuffer.offer(value);
                 }
-
             }
 
             line.close();
             mixer.close();
 
-        } catch (LineUnavailableException /*| IOException*/ e) {
+        } catch (LineUnavailableException e) {
             e.printStackTrace();
         }
     }

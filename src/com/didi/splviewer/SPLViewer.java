@@ -36,7 +36,7 @@ public final class SPLViewer implements SPLModule {
     private Container viewerContainer;
     private int width, height;
     private double cursor_x = -1;
-    private LinkedBlockingQueue<Sample> pullBuffer;
+    private LinkedBlockingQueue<Long> pullBuffer;
     private boolean EXIT_FLAG = false;
 
     private int SAMPLES_PER_UPDATE = AudioCapture.getSampleRate() / UPDATES_PER_SECOND;
@@ -53,10 +53,10 @@ public final class SPLViewer implements SPLModule {
                 int updateIndex = 1;
                 long frameBeginTime = 0;
 
-                LinkedList<Sample> sampleBuffer = new LinkedList<>();
+                LinkedList<Long> sampleBuffer = new LinkedList<>();
 
                 for (int sampleIndex = 1; sampleIndex <= AudioCapture.getSampleRate(); sampleIndex++) {
-                    Sample sample = pullBuffer.take();
+                    Long sample = pullBuffer.take();
 
                     if (sampleIndex == 1) {
                         frameBeginTime = System.nanoTime();
@@ -69,17 +69,14 @@ public final class SPLViewer implements SPLModule {
                         if (sampleIndex % SAMPLES_PER_UPDATE == 0) {
                             long updateBeginTime = System.nanoTime();
 
-                            for (Sample bufferedSample = sampleBuffer.poll(); bufferedSample != null; bufferedSample = sampleBuffer.poll()) {
+                            for (Long bufferedSample = sampleBuffer.poll(); bufferedSample != null; bufferedSample = sampleBuffer.poll()) {
                                 synchronized (g) {
-                                    printSample(g, bufferedSample.value);
+                                    printSample(g, bufferedSample);
                                 }
                             }
-
                             updateSleepIntervalAndSleep(updateIndex, frameBeginTime, updateBeginTime);
                             updateIndex++;
                         }
-
-                        //logger.debug("Processing finished at: " + (System.nanoTime() - begin) / 1000000);
                     } else {
                         logger.error("Sample was NULL  - THIS SHOULDN'T HAPPEN, i = {}", sampleIndex);
                     }
@@ -99,13 +96,10 @@ public final class SPLViewer implements SPLModule {
         long frameProcessingTime = timeNow - frameBeginTime;
         long remainingTimeForRestOfFrame = 1000000000L - frameProcessingTime; //Audio source is giving us samples every 1000ms (1 sec)
 
-        //logger.warn("Update {}, remainingTimeForRestOfFrame: {}, updatetook:" + updateProcessingTime, updateIndex, remainingTimeForRestOfFrame);
-
         if (remainingTimeForRestOfFrame >= 0L) {
             int numberOfRemainingUpdates = UPDATES_PER_SECOND - updateIndex;
             if (numberOfRemainingUpdates > 0) {
                 long newSleeptimePerUpdate = (remainingTimeForRestOfFrame - (numberOfRemainingUpdates * updateProcessingTime)) / numberOfRemainingUpdates;
-                logger.warn("Update: {}\t new sleeptime {}", updateIndex, newSleeptimePerUpdate);
                 if (newSleeptimePerUpdate > 0) {
                     Thread.sleep(newSleeptimePerUpdate / 1000000L);
                 }
@@ -128,21 +122,15 @@ public final class SPLViewer implements SPLModule {
             g.clearRect(0, 0, width, height);
         }
 
-
         double ratio = (double) value / (1 << (AudioCapture.getSampleSizeInBits() - (AudioCapture.isSIGNED() ? 1 : 0)));
-        //int sign = value < 0 ? -1 : 1;
         int y1 = height / 2 + (int) (ratio * (height / 2) * Y_ZOOM_LEVEL);
-        //Main.printTabular(value, ratio, y1);
-
-
         g.drawLine((int) cursor_x, y1, (int) cursor_x, y1);
-        //cursor_x += 1;
 
         cursor_x += (float) X_ZOOM_LEVEL / AudioCapture.getSampleRate();
     }
 
 
-    public SPLViewer(final LinkedBlockingQueue<Sample> pullBuffer) {
+    public SPLViewer(final LinkedBlockingQueue<Long> pullBuffer) {
         this.pullBuffer = pullBuffer;
         viewerContainer = new Container();
         viewerContainer.addComponentListener(new ComponentAdapter() {
