@@ -91,21 +91,22 @@ public final class SPLViewer implements SPLModule {
     }
 
     private void updateSleepIntervalAndSleep(final int updateIndex, final long frameBeginTime, final long updateBeginTime) throws InterruptedException {
-        long timeNow = System.nanoTime();
-        long updateProcessingTime = timeNow - updateBeginTime;
-        long frameProcessingTime = timeNow - frameBeginTime;
-        long remainingTimeForRestOfFrame = 1000000000L - frameProcessingTime; //Audio source is giving us samples every 1000ms (1 sec)
+        int numberOfRemainingUpdates = UPDATES_PER_SECOND - updateIndex;
+        if (numberOfRemainingUpdates > 0) {
+            long timeNow = System.nanoTime();
+            long updateProcessingTime = timeNow - updateBeginTime;
+            long frameProcessingTime = timeNow - frameBeginTime;
+            long remainingTimeForRestOfFrame = 1000000000L - frameProcessingTime; //Audio source is giving us samples every 1000ms (1 sec)
 
-        if (remainingTimeForRestOfFrame >= 0L) {
-            int numberOfRemainingUpdates = UPDATES_PER_SECOND - updateIndex;
-            if (numberOfRemainingUpdates > 0) {
+            if (remainingTimeForRestOfFrame >= 0L) {
                 long newSleeptimePerUpdate = (remainingTimeForRestOfFrame - (numberOfRemainingUpdates * updateProcessingTime)) / numberOfRemainingUpdates;
+                //logger.warn("Update: {}\t new sleeptime {}", updateIndex, newSleeptimePerUpdate);
                 if (newSleeptimePerUpdate > 0) {
                     Thread.sleep(newSleeptimePerUpdate / 1000000L);
                 }
+            } else {
+                logger.warn("Out of TIME at sample " + (updateIndex * (AudioCapture.getSampleRate() / UPDATES_PER_SECOND)) + " (loop " + updateIndex + ", time=" + (-remainingTimeForRestOfFrame) + ", frame processing time up to now=" + frameProcessingTime);
             }
-        } else {
-            logger.warn("Out of TIME at sample " + (updateIndex * (AudioCapture.getSampleRate() / UPDATES_PER_SECOND)) + " (loop " + updateIndex + ", time=" + (-remainingTimeForRestOfFrame) + ", frame processing time up to now=" + frameProcessingTime);
         }
     }
 
