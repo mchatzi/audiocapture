@@ -15,9 +15,10 @@ import javax.sound.sampled.LineUnavailableException;
 import javax.sound.sampled.Mixer;
 import javax.sound.sampled.TargetDataLine;
 
+import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import ch.qos.logback.classic.Logger;
+//import ch.qos.logback.classic.Logger; //check if relevant
 
 public final class AudioCapture implements SPLModule {
 

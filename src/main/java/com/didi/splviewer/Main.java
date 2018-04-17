@@ -11,10 +11,10 @@ import java.awt.event.WindowEvent;
 import java.io.IOException;
 import java.util.concurrent.LinkedBlockingQueue;
 
+import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import ch.qos.logback.classic.Logger;
-
+//import ch.qos.logback.classic.Logger; //TODO check if relevant?
 
 public final class Main {
 
@@ -33,7 +33,7 @@ public final class Main {
 
     private Main() throws IOException {
 
-        LinkedBlockingQueue<Long> queue = new LinkedBlockingQueue<>();
+        LinkedBlockingQueue<Long> queue = new LinkedBlockingQueue<Long>();
 
         audioCapture = new AudioCapture(queue);
         splViewer = new SPLViewer(queue);
@@ -123,7 +123,7 @@ public final class Main {
                 sb.append(" ");
             }
         }
-        System.out.println(sb.toString());
+        logger.info(sb.toString());
     }
 
 }

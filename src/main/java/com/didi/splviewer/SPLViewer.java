@@ -12,10 +12,11 @@ import java.awt.event.ComponentEvent;
 import java.util.LinkedList;
 import java.util.concurrent.LinkedBlockingQueue;
 
+import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import ch.qos.logback.classic.Level;
-import ch.qos.logback.classic.Logger;
+//import ch.qos.logback.classic.Level;
+//import ch.qos.logback.classic.Logger; //TODO check if relevant
 
 public final class SPLViewer implements SPLModule {
 
@@ -30,7 +31,7 @@ public final class SPLViewer implements SPLModule {
     private static Logger logger = (Logger) LoggerFactory.getLogger(SPLViewer.class);
 
     static {
-        logger.setLevel(Level.WARN);
+//        logger.setLevel(Level.WARN); //TODO relevant?
     }
 
     private Container viewerContainer;

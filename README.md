@@ -8,6 +8,10 @@ https://mchatzi.github.io/audiocapture/
 ## Build and run
 Easier way to run this is in Intellij, open the project folder as a java project, add any dependencies needed and create a new Run configuration, "Application"
 
+Possible to run it with:
+```bash
+$ mvn clean package && java -jar target/audiocapture-1.0-SNAPSHOT-jar-with-dependencies.jar
+```
 ## Todos
 
 * Verify that the processing of multi bytes (for 16 and 24 bit signals) is correct (Investigate why the sign of each byte, in the multi-byte case again, may be different)
