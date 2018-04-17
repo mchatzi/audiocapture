@@ -41,8 +41,10 @@ public final class AudioCapture implements SPLModule {
         return SIGNED;
     }
 
-
-    public static final boolean BIG_ENDIAN = true;
+    public static boolean BIG_ENDIAN = false;
+    public static boolean isBigEndian() {
+        return BIG_ENDIAN;
+    }
 
     private static Logger logger = (Logger) LoggerFactory.getLogger(AudioCapture.class);
     private final LinkedBlockingQueue<Long> pushBuffer;
@@ -70,7 +72,7 @@ public final class AudioCapture implements SPLModule {
             System.exit(-1);
         }
 
-        final AudioFormat format = new AudioFormat(getSampleRate(), getSampleSizeInBits(), NUMBER_OF_CHANNELS, SIGNED, BIG_ENDIAN);
+        final AudioFormat format = new AudioFormat(getSampleRate(), getSampleSizeInBits(), NUMBER_OF_CHANNELS, SIGNED, isBigEndian());
         final TargetDataLine line;
         try {
             line = (TargetDataLine) mixer.getLine(
@@ -108,11 +110,17 @@ public final class AudioCapture implements SPLModule {
                     if (frameSize == 1) {
                         value = buffer[i];
                     } else if (frameSize == 2) {
-                        value = (buffer[i] << 8) + buffer[i + 1];
+                        value = isBigEndian() ?
+                            (buffer[i] << 8) + buffer[i + 1] :
+                            buffer[i] + (buffer[i + 1] << 8);
                     } else if (frameSize == 3) {
-                        value = (buffer[i] << 16) + (buffer[i + 1] << 8) + buffer[i + 2];
+                        value = isBigEndian() ?
+                            (buffer[i] << 16) + (buffer[i + 1] << 8) + buffer[i + 2] :
+                            buffer[i] + (buffer[i + 1] << 8) + (buffer[i + 2] << 16);
                     } else if (frameSize == 4) {
-                        value = (buffer[i] << 24) + (buffer[i + 1] << 16) + (buffer[i + 2] << 8) + buffer[i + 3];
+                        value = isBigEndian() ?
+                            (buffer[i] << 24) + (buffer[i + 1] << 16) + (buffer[i + 2] << 8) + buffer[i + 3] :
+                            buffer[i] + (buffer[i + 1] << 8) + (buffer[i + 2] << 16) + (buffer[i + 3] << 24);
                     }
                     pushBuffer.offer(value);
                 }
@@ -136,50 +144,52 @@ public final class AudioCapture implements SPLModule {
     public Panel getOptionsPanel() {
         Panel menuPanel = new Panel();
 
-        Choice sampleRates = new Choice();
-        sampleRates.add("8000");
-        sampleRates.add("44100");
-        sampleRates.add("48000");
-        sampleRates.add("96000");
-        sampleRates.select(String.valueOf(getSampleRate()));
+        Choice sampleRatesChoice = new Choice();
+        sampleRatesChoice.add("8000");
+        sampleRatesChoice.add("44100");
+        sampleRatesChoice.add("48000");
+        sampleRatesChoice.add("96000");
+        sampleRatesChoice.select(String.valueOf(getSampleRate()));
 
-        Choice sampleSizeInBits = new Choice();
-        sampleSizeInBits.add("8");
-        sampleSizeInBits.add("16");
-        sampleSizeInBits.add("24");
+        Choice sampleSizeInBitsChoice = new Choice();
+        sampleSizeInBitsChoice.add("8");
+        sampleSizeInBitsChoice.add("16");
+        sampleSizeInBitsChoice.add("24");
         //sampleSizeInBits.add("32");
-        sampleSizeInBits.select(String.valueOf(getSampleSizeInBits()));
+        sampleSizeInBitsChoice.select(String.valueOf(getSampleSizeInBits()));
 
-        Choice numberOfChannels = new Choice();
-        numberOfChannels.add(String.valueOf(NUMBER_OF_CHANNELS));
-        numberOfChannels.setEnabled(false);
+        Choice numberOfChannelsChoice = new Choice();
+        numberOfChannelsChoice.add(String.valueOf(NUMBER_OF_CHANNELS));
+        numberOfChannelsChoice.setEnabled(false);
 
-        Checkbox signed = new Checkbox("Signed");
-        signed.setState(SIGNED);
-        signed.setEnabled(false);
+        Checkbox signedCheckbox = new Checkbox("Signed");
+        signedCheckbox.setState(SIGNED);
+        signedCheckbox.setEnabled(false);
 
-        Checkbox bigEndian = new Checkbox("Big-endian");
-        bigEndian.setState(BIG_ENDIAN);
-        bigEndian.setEnabled(false);
+        Checkbox bigEndianCheckbox = new Checkbox("Big-endian");
+        bigEndianCheckbox.setState(isBigEndian());
+
 
         menuPanel.add(new Label("Sample rate:"));
-        menuPanel.add(sampleRates);
+        menuPanel.add(sampleRatesChoice);
 
         menuPanel.add(new Label("  Sample size:"));
-        menuPanel.add(sampleSizeInBits);
+        menuPanel.add(sampleSizeInBitsChoice);
 
         menuPanel.add(new Label("  Channels:"));
-        menuPanel.add(numberOfChannels);
+        menuPanel.add(numberOfChannelsChoice);
 
-        menuPanel.add(signed);
-        menuPanel.add(bigEndian);
+        menuPanel.add(signedCheckbox);
+        menuPanel.add(bigEndianCheckbox);
 
         Button captureButton = new Button("Capture!");
         captureButton.addActionListener(e -> {
-            AudioCapture.SAMPLE_RATE = Integer.parseInt(sampleRates.getItem(sampleRates.getSelectedIndex()));
-            sampleRates.setEnabled(false);
-            AudioCapture.SAMPLE_SIZE_IN_BITS = Integer.parseInt(sampleSizeInBits.getItem(sampleSizeInBits.getSelectedIndex()));
-            sampleSizeInBits.setEnabled(false);
+            AudioCapture.SAMPLE_RATE = Integer.parseInt(sampleRatesChoice.getItem(sampleRatesChoice.getSelectedIndex()));
+            sampleRatesChoice.setEnabled(false);
+            AudioCapture.SAMPLE_SIZE_IN_BITS = Integer.parseInt(sampleSizeInBitsChoice.getItem(sampleSizeInBitsChoice.getSelectedIndex()));
+            sampleSizeInBitsChoice.setEnabled(false);
+            AudioCapture.BIG_ENDIAN = bigEndianCheckbox.getState();
+            bigEndianCheckbox.setEnabled(false);
             AudioCapture.this.begin();
         });
         menuPanel.add(captureButton);
@@ -187,11 +197,11 @@ public final class AudioCapture implements SPLModule {
         Button stopCaptureButton = new Button("Stop!");
         stopCaptureButton.addActionListener(e -> {
             AudioCapture.this.STOP_CAPTURE_FLAG = true;
-            sampleRates.setEnabled(true);
-            sampleSizeInBits.setEnabled(true);
+            sampleRatesChoice.setEnabled(true);
+            sampleSizeInBitsChoice.setEnabled(true);
             //numberOfChannels.setEnabled(true);
             //signed.setEnabled(true);
-            //bigEndian.setEnabled(true);
+            bigEndianCheckbox.setEnabled(true);
         });
         menuPanel.add(stopCaptureButton);
 
