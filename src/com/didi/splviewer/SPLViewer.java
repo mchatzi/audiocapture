@@ -136,11 +136,14 @@ public final class SPLViewer implements SPLModule {
 
         double ratio = (double) value / (1 << (AudioCapture.getSampleSizeInBits() - (AudioCapture.isSIGNED() ? 1 : 0)));
         double amplitude = ratio * (height / 2) * Y_ZOOM_LEVEL;
-        int y1 = height / 2 + (Math.abs(amplitude) >= 1 ? (int) amplitude : 0);
+
+        int sign = amplitude < 0 ? -1 : 1;
+        int y1 = (height / 2) + sign * (int) Math.round(Math.log10(Math.abs(amplitude)));
 
         if (y1 == height / 2) {
             g.setColor(Color.YELLOW);
         }
+
         g.drawLine((int) cursor_x, y1, (int) cursor_x, y1);
 
         if (y1 == height / 2) {
