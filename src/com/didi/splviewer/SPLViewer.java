@@ -1,6 +1,7 @@
 package com.didi.splviewer;
 
 import java.awt.Button;
+import java.awt.Choice;
 import java.awt.Color;
 import java.awt.Container;
 import java.awt.Graphics;
@@ -19,13 +20,15 @@ import ch.qos.logback.classic.Logger;
 
 public final class SPLViewer implements SPLModule {
 
+    private enum DisplayType {Linear, Log}
+
     /**
      * SETTINGS
      */
     private int UPDATES_PER_SECOND = 50; //refresh rate of the viewer, in pixels
     private int X_ZOOM_LEVEL = 40; //horizontal pixels per second (= horizontal pixels per #samples=SAMPLE_RATE)
     private double Y_ZOOM_LEVEL = 1.0;  //multiplier for vertical zoom
-
+    private DisplayType DISPLAY_TYPE = DisplayType.Log;
 
     private static Logger logger = (Logger) LoggerFactory.getLogger(SPLViewer.class);
 
@@ -84,7 +87,7 @@ public final class SPLViewer implements SPLModule {
                     }
                 }
 
-                g.drawString(String.valueOf((System.currentTimeMillis() - captureBeginTime) / 1000), (int) cursor_x, (height / 2) + 200);
+                g.drawString(String.valueOf((System.currentTimeMillis() - captureBeginTime) / 1000), (int) cursor_x, height  -40);
 
             } catch (InterruptedException e) {
                 e.printStackTrace();
@@ -135,18 +138,29 @@ public final class SPLViewer implements SPLModule {
         }
 
         double ratio = (double) value / (1 << (AudioCapture.getSampleSizeInBits() - (AudioCapture.isSIGNED() ? 1 : 0)));
-        double amplitude = ratio * (height / 2) * Y_ZOOM_LEVEL;
+        double maxAmplitude = height / 2;
+        int cursorY = (int) maxAmplitude;
 
-        int sign = amplitude < 0 ? -1 : 1;
-        int y1 = (height / 2) + sign * (int) Math.round(Math.log10(Math.abs(amplitude)));
+        synchronized (DISPLAY_TYPE) {
+            if (DISPLAY_TYPE == DisplayType.Log) {
+                int sign = ratio > 0 ? 1 : -1;
+                double decibelValue9 = Math.pow(10, Math.abs(ratio)) - 1;  //since abs(ratio) is between 0 and 1, we know this power is in [1..10]
+                double decibelValue = 10 * (decibelValue9 / 9); //So this moves in [0..10]
+                cursorY = (int) (maxAmplitude + sign * (decibelValue * (maxAmplitude / 10)) * Y_ZOOM_LEVEL);
 
-        if (y1 == height / 2) {
+            } else if (DISPLAY_TYPE == DisplayType.Linear) {
+                double absoluteAmplitude = ratio * maxAmplitude;
+                cursorY = (int) (maxAmplitude + (Math.abs(absoluteAmplitude) >= 1 ? absoluteAmplitude : 0));
+
+            }
+        }
+        if (cursorY == maxAmplitude) {
             g.setColor(Color.YELLOW);
         }
 
-        g.drawLine((int) cursor_x, y1, (int) cursor_x, y1);
+        g.drawLine((int) cursor_x, cursorY, (int) cursor_x, cursorY);
 
-        if (y1 == height / 2) {
+        if (cursorY == maxAmplitude) {
             g.setColor(Color.LIGHT_GRAY);
         }
 
@@ -175,15 +189,24 @@ public final class SPLViewer implements SPLModule {
     @Override
     public Panel getOptionsPanel() {
         Panel menuPanel = new Panel();
+
         TextField refreshRate = new TextField("  " + UPDATES_PER_SECOND);
         TextField horizontalZoom = new TextField("  " + X_ZOOM_LEVEL);
         TextField verticalZoom = new TextField(String.valueOf(Double.valueOf(Y_ZOOM_LEVEL)));
-        menuPanel.add(new Label("Viewer refresh rate (Hz):"));
+
+        Choice displayTypeChoice = new Choice();
+        displayTypeChoice.add(DisplayType.Linear.name());
+        displayTypeChoice.add(DisplayType.Log.name());
+        displayTypeChoice.select(DISPLAY_TYPE.name());
+
+        menuPanel.add(new Label("Refresh rate (Hz):"));
         menuPanel.add(refreshRate);
         menuPanel.add(new Label("   Horizontal zoom:"));
         menuPanel.add(horizontalZoom);
         menuPanel.add(new Label("   Vertical zoom:"));
         menuPanel.add(verticalZoom);
+        menuPanel.add(new Label("  Display:"));
+        menuPanel.add(displayTypeChoice);
 
         Button button = new Button("Yes!");
         button.addActionListener(e -> {
@@ -192,8 +215,9 @@ public final class SPLViewer implements SPLModule {
                 SAMPLES_PER_UPDATE = AudioCapture.getSampleRate() / UPDATES_PER_SECOND;
                 X_ZOOM_LEVEL = Integer.parseInt(horizontalZoom.getText().trim());
                 Y_ZOOM_LEVEL = Double.parseDouble(verticalZoom.getText().trim());
-                viewerContainer.getGraphics().clearRect(0, 0, viewerContainer.getWidth(), viewerContainer.getHeight());
-                cursor_x = 0;
+                DISPLAY_TYPE = DisplayType.valueOf(displayTypeChoice.getItem(displayTypeChoice.getSelectedIndex()));
+                //viewerContainer.getGraphics().clearRect(0, 0, viewerContainer.getWidth(), viewerContainer.getHeight());
+                //cursor_x = 0;
             }
         });
         menuPanel.add(button);

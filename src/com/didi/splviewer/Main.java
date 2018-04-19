@@ -87,9 +87,9 @@ public final class Main {
         mainFrame.addComponentListener(new ComponentAdapter() {
             @Override
             public void componentResized(final ComponentEvent e) {
-                viewerControlFrame.setBounds(100, mainFrame.getHeight() + 30, 780, 40);
+                viewerControlFrame.setBounds(100, mainFrame.getHeight() + 30, 880, 40);
                 audioCaptureControlFrame.setBounds(100, mainFrame.getHeight() + 75, 880, 40);
-                applicationControlFrame.setBounds(100, mainFrame.getHeight() + 120, 780, 40);
+                applicationControlFrame.setBounds(100, mainFrame.getHeight() + 120, 880, 40);
             }
         });
 
