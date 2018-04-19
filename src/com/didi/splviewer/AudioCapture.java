@@ -88,31 +88,7 @@ public final class AudioCapture implements SPLModule {
                         throw new RuntimeException("Big/low-endian pair didn't have equal number of samples");
                     }
                 }
-
-                for (int i = 0; i < buffer.length; i += frameSize) {
-                    //TODO   How can it be that bytes belonging to the same frame may have different signs?????
-                    //TODO      Is it perhaps only the 1st bit of the 1st byte (in big-endian) signed (and thus 7 bit of information for the first byte)
-                    //TODO     and the rest treated as signed while they really aren't? (so 8 bits and the 1st is now wrongly mistaken as the sign)
-                    //int sign = buffer[i] < 0 ? -1 : 1;
-
-                    long value = 0;
-                    if (frameSize == 1) {
-                        value = buffer[i];
-                    } else if (frameSize == 2) {
-                        value = isBigEndian() ?
-                            (buffer[i] << 8) + buffer[i + 1] :
-                            buffer[i] + (buffer[i + 1] << 8);
-                    } else if (frameSize == 3) {
-                        value = isBigEndian() ?
-                            (buffer[i] << 16) + (buffer[i + 1] << 8) + buffer[i + 2] :
-                            buffer[i] + (buffer[i + 1] << 8) + (buffer[i + 2] << 16);
-                    } else if (frameSize == 4) {
-                        value = isBigEndian() ?
-                            (buffer[i] << 24) + (buffer[i + 1] << 16) + (buffer[i + 2] << 8) + buffer[i + 3] :
-                            buffer[i] + (buffer[i + 1] << 8) + (buffer[i + 2] << 16) + (buffer[i + 3] << 24);
-                    }
-                    pushBuffer.offer(value);
-                }
+                pushSamples(frameSize, buffer);
             }
 
             line.close();
@@ -121,6 +97,30 @@ public final class AudioCapture implements SPLModule {
         } catch (LineUnavailableException e) {
             e.printStackTrace();
         }
+    }
+
+    private void pushSamples(final int frameSize, final byte[] buffer) {
+        for (int i = 0; i < buffer.length; i += frameSize) {
+            long value = 0;
+            if (frameSize == 1) {
+                value = buffer[i];
+            } else if (frameSize == 2) {
+                value = isBigEndian() ?
+                    //TODO, do we subtract 1 before 1s complement or after???? Makes small difference to the actual value.    ~(((buffer[i] << 8) | buffer[i + 1]) - 1)  VERSUS ~((buffer[i] << 8) | buffer[i + 1]) - 1
+                    ~(((buffer[i] << 8) | buffer[i + 1]) - 1) :
+                    ~(((buffer[i + 1] << 8) | buffer[i]) - 1);
+            } else if (frameSize == 3) {
+                value = isBigEndian() ?
+                    ~(((buffer[i] << 16) | (buffer[i + 1] << 8) | buffer[i + 2]) - 1) :
+                    ~(((buffer[i + 2] << 16) | (buffer[i + 1] << 8) | buffer[i]) - 1);
+            } else if (frameSize == 4) {
+                value = isBigEndian() ?
+                    ~(((buffer[i] << 24) | (buffer[i + 1] << 16) | (buffer[i + 2] << 8) | buffer[i + 3]) - 1) :
+                    ~(((buffer[i + 3] << 24) | (buffer[i + 2] << 16) | (buffer[i + 1] << 8) | buffer[i]) - 1);
+            }
+            pushBuffer.offer(value);
+        }
+
     }
 
     @Override
