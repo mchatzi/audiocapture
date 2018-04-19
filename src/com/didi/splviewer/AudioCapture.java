@@ -41,7 +41,8 @@ public final class AudioCapture implements SPLModule {
         return SIGNED;
     }
 
-    public static boolean BIG_ENDIAN = false;
+    public static boolean BIG_ENDIAN = true;
+
     public static boolean isBigEndian() {
         return BIG_ENDIAN;
     }
@@ -59,19 +60,7 @@ public final class AudioCapture implements SPLModule {
     public void run() {
         STOP_CAPTURE_FLAG = false;
 
-        Mixer mixer = null;
-        for (Mixer.Info info : AudioSystem.getMixerInfo()) {
-            logger.info(info.toString());
-            if (info.getName().equals("Built-in Microphone")) {
-                mixer = AudioSystem.getMixer(info);
-                break;
-            }
-        }
-        if (mixer == null) {
-            logger.error("No mixer by that name found");
-            System.exit(-1);
-        }
-
+        Mixer mixer = getMixer();
         final AudioFormat format = new AudioFormat(getSampleRate(), getSampleSizeInBits(), NUMBER_OF_CHANNELS, SIGNED, isBigEndian());
         final TargetDataLine line;
         try {
@@ -95,8 +84,8 @@ public final class AudioCapture implements SPLModule {
                 int checkCount = counts[0];
                 for (int count : counts) {
                     if (count != checkCount) {
-                        logger.error("Big-endian pair didn't have equal number of samples");
-
+                        logger.error("Big/low-endian pair didn't have equal number of samples");
+                        throw new RuntimeException("Big/low-endian pair didn't have equal number of samples");
                     }
                 }
 
@@ -207,5 +196,21 @@ public final class AudioCapture implements SPLModule {
 
         menuPanel.setBackground(Color.YELLOW);
         return menuPanel;
+    }
+
+    private Mixer getMixer() {
+        Mixer mixer = null;
+        for (Mixer.Info info : AudioSystem.getMixerInfo()) {
+            logger.info(info.toString());
+            if (info.getName().equals("Built-in Microphone")) {
+                mixer = AudioSystem.getMixer(info);
+                break;
+            }
+        }
+        if (mixer == null) {
+            logger.error("No mixer by that name found");
+            System.exit(-1);
+        }
+        return mixer;
     }
 }
