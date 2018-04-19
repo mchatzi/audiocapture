@@ -38,6 +38,7 @@ public final class SPLViewer implements SPLModule {
     private double cursor_x = -1;
     private LinkedBlockingQueue<Long> pullBuffer;
     private boolean EXIT_FLAG = false;
+    private final Average updateProcessingTimeAverage = new Average();
 
     private int SAMPLES_PER_UPDATE = AudioCapture.getSampleRate() / UPDATES_PER_SECOND;
 
@@ -51,6 +52,7 @@ public final class SPLViewer implements SPLModule {
                 g.setColor(Color.LIGHT_GRAY);
 
                 int updateIndex = 1;
+                updateProcessingTimeAverage.reset();
                 long frameBeginTime = 0;
 
                 LinkedList<Long> sampleBuffer = new LinkedList<>();
@@ -95,14 +97,23 @@ public final class SPLViewer implements SPLModule {
         if (numberOfRemainingUpdates > 0) {
             long timeNow = System.nanoTime();
             long updateProcessingTime = timeNow - updateBeginTime;
+
+            long averageUpdateProcessingTime = (long) updateProcessingTimeAverage.newAverage(updateProcessingTime);
+            //logger.warn("Average: {}, actual {}", averageUpdateProcessingTime, updateProcessingTime);
+
             long frameProcessingTime = timeNow - frameBeginTime;
             long remainingTimeForRestOfFrame = 1000000000L - frameProcessingTime; //Audio source is giving us samples every 1000ms (1 sec)
 
             if (remainingTimeForRestOfFrame >= 0L) {
-                long newSleeptimePerUpdate = (remainingTimeForRestOfFrame - (numberOfRemainingUpdates * updateProcessingTime)) / numberOfRemainingUpdates;
-                //logger.warn("Update: {}\t new sleeptime {}", updateIndex, newSleeptimePerUpdate);
-                if (newSleeptimePerUpdate > 0) {
-                    Thread.sleep(newSleeptimePerUpdate / 1000000L);
+                long newSleeptimePerUpdateInMillis = Math.round(
+                    ((remainingTimeForRestOfFrame / (double) numberOfRemainingUpdates) - averageUpdateProcessingTime)
+                        / 1000000L);
+
+                if (newSleeptimePerUpdateInMillis > 0 && newSleeptimePerUpdateInMillis >= 1) {
+                    Thread.sleep(newSleeptimePerUpdateInMillis);
+                }
+                if (newSleeptimePerUpdateInMillis < 1) {
+                    logger.warn("Please lower refresh rate"); //Well, if it happened that the processing time took too much, it's not the refresh rate's fault
                 }
             } else {
                 logger.warn("Out of TIME at sample " + (updateIndex * (AudioCapture.getSampleRate() / UPDATES_PER_SECOND)) + " (loop " + updateIndex + ", time=" + (-remainingTimeForRestOfFrame) + ", frame processing time up to now=" + frameProcessingTime);
