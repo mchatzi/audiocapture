@@ -24,7 +24,7 @@ public final class SPLViewer implements SPLModule {
      */
     private int UPDATES_PER_SECOND = 50; //refresh rate of the viewer, in pixels
     private int X_ZOOM_LEVEL = 40; //horizontal pixels per second (= horizontal pixels per #samples=SAMPLE_RATE)
-    private double Y_ZOOM_LEVEL = 1.9;  //multiplier for vertical zoom
+    private double Y_ZOOM_LEVEL = 1.0;  //multiplier for vertical zoom
 
 
     private static Logger logger = (Logger) LoggerFactory.getLogger(SPLViewer.class);
@@ -48,7 +48,7 @@ public final class SPLViewer implements SPLModule {
         while (!EXIT_FLAG) {
             try {
                 Graphics g = viewerContainer.getGraphics();
-                g.setColor(Color.WHITE);
+                g.setColor(Color.LIGHT_GRAY);
 
                 int updateIndex = 1;
                 long frameBeginTime = 0;
@@ -124,8 +124,17 @@ public final class SPLViewer implements SPLModule {
         }
 
         double ratio = (double) value / (1 << (AudioCapture.getSampleSizeInBits() - (AudioCapture.isSIGNED() ? 1 : 0)));
-        int y1 = height / 2 + (int) (ratio * (height / 2) * Y_ZOOM_LEVEL);
+        double amplitude = ratio * (height / 2) * Y_ZOOM_LEVEL;
+        int y1 = height / 2 + (Math.abs(amplitude) >= 1 ? (int) amplitude : 0);
+
+        if (y1 == height / 2) {
+            g.setColor(Color.YELLOW);
+        }
         g.drawLine((int) cursor_x, y1, (int) cursor_x, y1);
+
+        if (y1 == height / 2) {
+            g.setColor(Color.LIGHT_GRAY);
+        }
 
         cursor_x += (float) X_ZOOM_LEVEL / AudioCapture.getSampleRate();
     }
@@ -154,7 +163,7 @@ public final class SPLViewer implements SPLModule {
         Panel menuPanel = new Panel();
         TextField refreshRate = new TextField("  " + UPDATES_PER_SECOND);
         TextField horizontalZoom = new TextField("  " + X_ZOOM_LEVEL);
-        TextField verticalZoom = new TextField(String.valueOf(Y_ZOOM_LEVEL));
+        TextField verticalZoom = new TextField(String.valueOf(Double.valueOf(Y_ZOOM_LEVEL)));
         menuPanel.add(new Label("Viewer refresh rate (Hz):"));
         menuPanel.add(refreshRate);
         menuPanel.add(new Label("   Horizontal zoom:"));
