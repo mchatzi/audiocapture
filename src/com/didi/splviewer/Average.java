@@ -16,7 +16,6 @@ public class Average {
     }
 
     public void reset() {
-        //logger.warn("*******************************************************RESEETTTTTTTT *********************************************\n\n\n");
         numberOfItems = 0;
         average = 0;
     }
@@ -25,6 +24,7 @@ public class Average {
     //Forgetting how many items participate in this average means that the next number coming in will influence the average more.
     //In other words by forgetting we make the average mechanism favor more new statistics coming in and forget old ones.
     //Newer statistics matter more than old ones
+    //TODO Revisit, does this really do that?
     public void forget() {
         numberOfItems /= 4;
     }
