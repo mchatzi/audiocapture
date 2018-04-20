@@ -174,7 +174,12 @@ public final class SPLViewer implements SPLModule {
 
     public SPLViewer(final LinkedBlockingQueue<Long> pullBuffer) {
         this.pullBuffer = pullBuffer;
-        viewerContainer = new Container();
+    }
+
+    @Override
+    public Container getView() {
+        viewerContainer = new Panel();
+        viewerContainer.setBackground(new Color(29, 76, 122));
         viewerContainer.addComponentListener(new ComponentAdapter() {
             @Override
             public void componentResized(final ComponentEvent e) {
@@ -183,10 +188,6 @@ public final class SPLViewer implements SPLModule {
                 cursor_x = 0;
             }
         });
-    }
-
-    @Override
-    public Container getView() {
         return viewerContainer;
     }
 

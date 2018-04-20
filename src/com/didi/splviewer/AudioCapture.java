@@ -49,7 +49,6 @@ public final class AudioCapture implements SPLModule {
 
     private static Logger logger = (Logger) LoggerFactory.getLogger(AudioCapture.class);
     private final LinkedBlockingQueue<Long> pushBuffer;
-    private boolean EXIT_FLAG = false;
     private boolean STOP_CAPTURE_FLAG = false;
 
     public AudioCapture(LinkedBlockingQueue<Long> pushBuffer) {
@@ -75,7 +74,7 @@ public final class AudioCapture implements SPLModule {
             byte buffer[] = new byte[bufferSize * frameSize];
 
             //Main loop
-            while (!EXIT_FLAG && !STOP_CAPTURE_FLAG) {
+            while (!STOP_CAPTURE_FLAG) {
                 int[] counts = new int[frameSize];
                 for (int i = 0; i < frameSize; i++) {
                     counts[i] = line.read(buffer, i * bufferSize, bufferSize);
@@ -125,7 +124,7 @@ public final class AudioCapture implements SPLModule {
 
     @Override
     public AudioCapture shutdown() {
-        EXIT_FLAG = true;
+        STOP_CAPTURE_FLAG = true;
         return this;
     }
 
@@ -171,7 +170,10 @@ public final class AudioCapture implements SPLModule {
         menuPanel.add(signedCheckbox);
         menuPanel.add(bigEndianCheckbox);
 
-        Button captureButton = new Button("Capture!");
+        final Button captureButton = new Button("Capture!");
+        Button stopCaptureButton = new Button("Stop!");
+        stopCaptureButton.setEnabled(false);
+
         captureButton.addActionListener(e -> {
             AudioCapture.SAMPLE_RATE = Integer.parseInt(sampleRatesChoice.getItem(sampleRatesChoice.getSelectedIndex()));
             sampleRatesChoice.setEnabled(false);
@@ -179,11 +181,27 @@ public final class AudioCapture implements SPLModule {
             sampleSizeInBitsChoice.setEnabled(false);
             AudioCapture.BIG_ENDIAN = bigEndianCheckbox.getState();
             bigEndianCheckbox.setEnabled(false);
+            captureButton.setEnabled(false);
+            stopCaptureButton.setEnabled(true);
+            new Thread(() -> {
+                try {
+                    Color initialBackground = captureButton.getBackground();
+                    while (!STOP_CAPTURE_FLAG) {
+                        captureButton.setBackground(new Color(29, 76, 122));
+                        Thread.sleep(400);
+                        captureButton.setBackground(initialBackground);
+                        Thread.sleep(400);
+                    }
+                    captureButton.setBackground(initialBackground);
+                } catch (InterruptedException e1) {
+                    e1.printStackTrace();
+                }
+            }).start();
+
             AudioCapture.this.begin();
         });
         menuPanel.add(captureButton);
 
-        Button stopCaptureButton = new Button("Stop!");
         stopCaptureButton.addActionListener(e -> {
             AudioCapture.this.STOP_CAPTURE_FLAG = true;
             sampleRatesChoice.setEnabled(true);
@@ -191,6 +209,8 @@ public final class AudioCapture implements SPLModule {
             //numberOfChannels.setEnabled(true);
             //signed.setEnabled(true);
             bigEndianCheckbox.setEnabled(true);
+            captureButton.setEnabled(true);
+            stopCaptureButton.setEnabled(false);
         });
         menuPanel.add(stopCaptureButton);
 

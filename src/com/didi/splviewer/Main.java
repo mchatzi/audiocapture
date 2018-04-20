@@ -41,7 +41,6 @@ public final class Main {
         //Simple GUI
         mainFrame = new Frame();
         mainFrame.setSize(1200, 600);
-        mainFrame.setBackground(new Color(29, 76, 122));
         mainFrame.addWindowListener(new WindowAdapter() {
             @Override
             public void windowClosing(WindowEvent e) {
@@ -77,6 +76,7 @@ public final class Main {
         applicationControlFrame = new Frame();
         applicationControlFrame.setBounds(100, mainFrame.getHeight() + 120, 880, 40);
         applicationControlFrame.setUndecorated(true);
+
         Panel applicationOptionsPanel = new Panel();
         applicationOptionsPanel.setBackground(Color.YELLOW);
         Button exitButton = new Button("Quit");
