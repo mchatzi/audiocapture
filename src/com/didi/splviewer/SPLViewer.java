@@ -47,34 +47,35 @@ public final class SPLViewer implements SPLModule {
 
     @Override
     public void run() {
+        Graphics g = viewerContainer.getGraphics();
+        g.setColor(Color.LIGHT_GRAY);
+
         long captureBeginTime = System.currentTimeMillis();  //No we don't restart the runnable every time a capture is stopped and started
 
         while (!EXIT_FLAG) {
             try {
-                Graphics g = viewerContainer.getGraphics();
-                g.setColor(Color.LIGHT_GRAY);
-
                 int updateIndex = 1;
                 updateProcessingTimeAverage.reset();
                 long frameBeginTime = 0;
-
-                LinkedList<Long> sampleBuffer = new LinkedList<>();
+                LinkedList<Long> localUpdateSampleBuffer = new LinkedList<>();
 
                 for (int sampleIndex = 1; sampleIndex <= AudioCapture.getSampleRate(); sampleIndex++) {
                     Long sample = pullBuffer.take();
 
+                    //The take() method is bloking so we only want to start timing the frame after we're unblocked, ie samples started coming in
                     if (sampleIndex == 1) {
                         frameBeginTime = System.nanoTime();
                         SAMPLES_PER_UPDATE = AudioCapture.getSampleRate() / UPDATES_PER_SECOND; //Need to recalculate this when we change audio capture settings
                     }
 
                     if (sample != null) {
-                        sampleBuffer.add(sample);
+                        localUpdateSampleBuffer.add(sample);
 
                         if (sampleIndex % SAMPLES_PER_UPDATE == 0) {
                             long updateBeginTime = System.nanoTime();
 
-                            for (Long bufferedSample = sampleBuffer.poll(); bufferedSample != null; bufferedSample = sampleBuffer.poll()) {
+                            //Completely empty the sample buffer
+                            for (Long bufferedSample = localUpdateSampleBuffer.poll(); bufferedSample != null; bufferedSample = localUpdateSampleBuffer.poll()) {
                                 synchronized (g) {
                                     printSample(g, bufferedSample);
                                 }
@@ -87,7 +88,10 @@ public final class SPLViewer implements SPLModule {
                     }
                 }
 
-                g.drawString(String.valueOf((System.currentTimeMillis() - captureBeginTime) / 1000), (int) cursor_x, height  -40);
+                //Show a timeline of seconds since beginning of capture
+                synchronized (g) {
+                    g.drawString(String.valueOf((System.currentTimeMillis() - captureBeginTime) / 1000), (int) cursor_x, height - 40);
+                }
 
             } catch (InterruptedException e) {
                 e.printStackTrace();
