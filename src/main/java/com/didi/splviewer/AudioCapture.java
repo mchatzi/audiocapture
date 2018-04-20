@@ -42,12 +42,14 @@ public final class AudioCapture implements SPLModule {
         return SIGNED;
     }
 
+    public static boolean BIG_ENDIAN = true;
 
-    public static final boolean BIG_ENDIAN = true;
+    public static boolean isBigEndian() {
+        return BIG_ENDIAN;
+    }
 
     private static Logger logger = (Logger) LoggerFactory.getLogger(AudioCapture.class);
     private final LinkedBlockingQueue<Long> pushBuffer;
-    private boolean EXIT_FLAG = false;
     private boolean STOP_CAPTURE_FLAG = false;
 
     public AudioCapture(LinkedBlockingQueue<Long> pushBuffer) {
@@ -58,20 +60,8 @@ public final class AudioCapture implements SPLModule {
     public void run() {
         STOP_CAPTURE_FLAG = false;
 
-        Mixer mixer = null;
-        for (Mixer.Info info : AudioSystem.getMixerInfo()) {
-            logger.info(info.toString());
-            if (info.getName().equals("Built-in Microphone")) {
-                mixer = AudioSystem.getMixer(info);
-                break;
-            }
-        }
-        if (mixer == null) {
-            logger.error("No mixer by that name found");
-            System.exit(-1);
-        }
-
-        final AudioFormat format = new AudioFormat(getSampleRate(), getSampleSizeInBits(), NUMBER_OF_CHANNELS, SIGNED, BIG_ENDIAN);
+        Mixer mixer = getMixer();
+        final AudioFormat format = new AudioFormat(getSampleRate(), getSampleSizeInBits(), NUMBER_OF_CHANNELS, SIGNED, isBigEndian());
         final TargetDataLine line;
         try {
             line = (TargetDataLine) mixer.getLine(
@@ -85,7 +75,7 @@ public final class AudioCapture implements SPLModule {
             byte buffer[] = new byte[bufferSize * frameSize];
 
             //Main loop
-            while (!EXIT_FLAG && !STOP_CAPTURE_FLAG) {
+            while (!STOP_CAPTURE_FLAG) {
                 int[] counts = new int[frameSize];
                 for (int i = 0; i < frameSize; i++) {
                     counts[i] = line.read(buffer, i * bufferSize, bufferSize);
@@ -94,29 +84,11 @@ public final class AudioCapture implements SPLModule {
                 int checkCount = counts[0];
                 for (int count : counts) {
                     if (count != checkCount) {
-                        logger.error("Big-endian pair didn't have equal number of samples");
-
+                        logger.error("Big/low-endian pair didn't have equal number of samples");
+                        throw new RuntimeException("Big/low-endian pair didn't have equal number of samples");
                     }
                 }
-
-                for (int i = 0; i < buffer.length; i += frameSize) {
-                    //TODO   How can it be that bytes belonging to the same frame may have different signs?????
-                    //TODO      Is it perhaps only the 1st bit of the 1st byte (in big-endian) signed (and thus 7 bit of information for the first byte)
-                    //TODO     and the rest treated as signed while they really aren't? (so 8 bits and the 1st is now wrongly mistaken as the sign)
-                    //int sign = buffer[i] < 0 ? -1 : 1;
-
-                    long value = 0;
-                    if (frameSize == 1) {
-                        value = buffer[i];
-                    } else if (frameSize == 2) {
-                        value = (buffer[i] << 8) + buffer[i + 1];
-                    } else if (frameSize == 3) {
-                        value = (buffer[i] << 16) + (buffer[i + 1] << 8) + buffer[i + 2];
-                    } else if (frameSize == 4) {
-                        value = (buffer[i] << 24) + (buffer[i + 1] << 16) + (buffer[i + 2] << 8) + buffer[i + 3];
-                    }
-                    pushBuffer.offer(value);
-                }
+                pushSamples(frameSize, buffer);
             }
 
             line.close();
@@ -127,9 +99,33 @@ public final class AudioCapture implements SPLModule {
         }
     }
 
+    private void pushSamples(final int frameSize, final byte[] buffer) {
+        for (int i = 0; i < buffer.length; i += frameSize) {
+            long value = 0;
+            if (frameSize == 1) {
+                value = buffer[i];
+            } else if (frameSize == 2) {
+                value = isBigEndian() ?
+                    //TODO, do we subtract 1 before 1s complement or after???? Makes small difference to the actual value.    ~(((buffer[i] << 8) | buffer[i + 1]) - 1)  VERSUS ~((buffer[i] << 8) | buffer[i + 1]) - 1
+                    ~(((buffer[i] << 8) | buffer[i + 1]) - 1) :
+                    ~(((buffer[i + 1] << 8) | buffer[i]) - 1);
+            } else if (frameSize == 3) {
+                value = isBigEndian() ?
+                    ~(((buffer[i] << 16) | (buffer[i + 1] << 8) | buffer[i + 2]) - 1) :
+                    ~(((buffer[i + 2] << 16) | (buffer[i + 1] << 8) | buffer[i]) - 1);
+            } else if (frameSize == 4) {
+                value = isBigEndian() ?
+                    ~(((buffer[i] << 24) | (buffer[i + 1] << 16) | (buffer[i + 2] << 8) | buffer[i + 3]) - 1) :
+                    ~(((buffer[i + 3] << 24) | (buffer[i + 2] << 16) | (buffer[i + 1] << 8) | buffer[i]) - 1);
+            }
+            pushBuffer.offer(value);
+        }
+
+    }
+
     @Override
     public AudioCapture shutdown() {
-        EXIT_FLAG = true;
+        STOP_CAPTURE_FLAG = true;
         return this;
     }
 
@@ -137,66 +133,105 @@ public final class AudioCapture implements SPLModule {
     public Panel getOptionsPanel() {
         Panel menuPanel = new Panel();
 
-        Choice sampleRates = new Choice();
-        sampleRates.add("8000");
-        sampleRates.add("44100");
-        sampleRates.add("48000");
-        sampleRates.add("96000");
-        sampleRates.select(String.valueOf(getSampleRate()));
+        Choice sampleRatesChoice = new Choice();
+        sampleRatesChoice.add("8000");
+        sampleRatesChoice.add("44100");
+        sampleRatesChoice.add("48000");
+        sampleRatesChoice.add("96000");
+        sampleRatesChoice.select(String.valueOf(getSampleRate()));
 
-        Choice sampleSizeInBits = new Choice();
-        sampleSizeInBits.add("8");
-        sampleSizeInBits.add("16");
-        sampleSizeInBits.add("24");
+        Choice sampleSizeInBitsChoice = new Choice();
+        sampleSizeInBitsChoice.add("8");
+        sampleSizeInBitsChoice.add("16");
+        sampleSizeInBitsChoice.add("24");
         //sampleSizeInBits.add("32");
-        sampleSizeInBits.select(String.valueOf(getSampleSizeInBits()));
+        sampleSizeInBitsChoice.select(String.valueOf(getSampleSizeInBits()));
 
-        Choice numberOfChannels = new Choice();
-        numberOfChannels.add(String.valueOf(NUMBER_OF_CHANNELS));
-        numberOfChannels.setEnabled(false);
+        Choice numberOfChannelsChoice = new Choice();
+        numberOfChannelsChoice.add(String.valueOf(NUMBER_OF_CHANNELS));
+        numberOfChannelsChoice.setEnabled(false);
 
-        Checkbox signed = new Checkbox("Signed");
-        signed.setState(SIGNED);
-        signed.setEnabled(false);
+        Checkbox signedCheckbox = new Checkbox("Signed");
+        signedCheckbox.setState(SIGNED);
+        signedCheckbox.setEnabled(false);
 
-        Checkbox bigEndian = new Checkbox("Big-endian");
-        bigEndian.setState(BIG_ENDIAN);
-        bigEndian.setEnabled(false);
+        Checkbox bigEndianCheckbox = new Checkbox("Big-endian");
+        bigEndianCheckbox.setState(isBigEndian());
+
 
         menuPanel.add(new Label("Sample rate:"));
-        menuPanel.add(sampleRates);
+        menuPanel.add(sampleRatesChoice);
 
         menuPanel.add(new Label("  Sample size:"));
-        menuPanel.add(sampleSizeInBits);
+        menuPanel.add(sampleSizeInBitsChoice);
 
         menuPanel.add(new Label("  Channels:"));
-        menuPanel.add(numberOfChannels);
+        menuPanel.add(numberOfChannelsChoice);
 
-        menuPanel.add(signed);
-        menuPanel.add(bigEndian);
+        menuPanel.add(signedCheckbox);
+        menuPanel.add(bigEndianCheckbox);
 
-        Button captureButton = new Button("Capture!");
+        final Button captureButton = new Button("Capture!");
+        Button stopCaptureButton = new Button("Stop!");
+        stopCaptureButton.setEnabled(false);
+
         captureButton.addActionListener(e -> {
-            AudioCapture.SAMPLE_RATE = Integer.parseInt(sampleRates.getItem(sampleRates.getSelectedIndex()));
-            sampleRates.setEnabled(false);
-            AudioCapture.SAMPLE_SIZE_IN_BITS = Integer.parseInt(sampleSizeInBits.getItem(sampleSizeInBits.getSelectedIndex()));
-            sampleSizeInBits.setEnabled(false);
+            AudioCapture.SAMPLE_RATE = Integer.parseInt(sampleRatesChoice.getItem(sampleRatesChoice.getSelectedIndex()));
+            sampleRatesChoice.setEnabled(false);
+            AudioCapture.SAMPLE_SIZE_IN_BITS = Integer.parseInt(sampleSizeInBitsChoice.getItem(sampleSizeInBitsChoice.getSelectedIndex()));
+            sampleSizeInBitsChoice.setEnabled(false);
+            AudioCapture.BIG_ENDIAN = bigEndianCheckbox.getState();
+            bigEndianCheckbox.setEnabled(false);
+            captureButton.setEnabled(false);
+            stopCaptureButton.setEnabled(true);
+            new Thread(() -> {
+                try {
+                    Color initialBackground = captureButton.getBackground();
+                    while (!STOP_CAPTURE_FLAG) {
+                        captureButton.setBackground(new Color(29, 76, 122));
+                        Thread.sleep(400);
+                        captureButton.setBackground(initialBackground);
+                        Thread.sleep(400);
+                    }
+                    captureButton.setBackground(initialBackground);
+                } catch (InterruptedException e1) {
+                    e1.printStackTrace();
+                }
+            }).start();
+
             AudioCapture.this.begin();
         });
         menuPanel.add(captureButton);
 
-        Button stopCaptureButton = new Button("Stop!");
         stopCaptureButton.addActionListener(e -> {
             AudioCapture.this.STOP_CAPTURE_FLAG = true;
-            sampleRates.setEnabled(true);
-            sampleSizeInBits.setEnabled(true);
+            sampleRatesChoice.setEnabled(true);
+            sampleSizeInBitsChoice.setEnabled(true);
             //numberOfChannels.setEnabled(true);
             //signed.setEnabled(true);
-            //bigEndian.setEnabled(true);
+            bigEndianCheckbox.setEnabled(true);
+            captureButton.setEnabled(true);
+            stopCaptureButton.setEnabled(false);
         });
         menuPanel.add(stopCaptureButton);
 
         menuPanel.setBackground(Color.YELLOW);
         return menuPanel;
+    }
+
+    private Mixer getMixer() {
+        Mixer mixer = null;
+        for (Mixer.Info info : AudioSystem.getMixerInfo()) {
+            logger.info(info.toString());
+            if (info.getName().equals("Built-in Microphone")) {
+                mixer = AudioSystem.getMixer(info);
+                break;
+            }
+        }
+        if (mixer == null) {
+            logger.error("No mixer by that name found");
+            System.exit(-1);
+        }
+        return mixer;
     }
 }

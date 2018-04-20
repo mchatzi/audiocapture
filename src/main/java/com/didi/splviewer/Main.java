@@ -41,7 +41,6 @@ public final class Main {
         //Simple GUI
         mainFrame = new Frame();
         mainFrame.setSize(1200, 600);
-        mainFrame.setBackground(new Color(29, 76, 122));
         mainFrame.addWindowListener(new WindowAdapter() {
             @Override
             public void windowClosing(WindowEvent e) {
@@ -77,6 +76,7 @@ public final class Main {
         applicationControlFrame = new Frame();
         applicationControlFrame.setBounds(100, mainFrame.getHeight() + 120, 880, 40);
         applicationControlFrame.setUndecorated(true);
+
         Panel applicationOptionsPanel = new Panel();
         applicationOptionsPanel.setBackground(Color.YELLOW);
         Button exitButton = new Button("Quit");
@@ -87,9 +87,9 @@ public final class Main {
         mainFrame.addComponentListener(new ComponentAdapter() {
             @Override
             public void componentResized(final ComponentEvent e) {
-                viewerControlFrame.setBounds(100, mainFrame.getHeight() + 30, 780, 40);
+                viewerControlFrame.setBounds(100, mainFrame.getHeight() + 30, 880, 40);
                 audioCaptureControlFrame.setBounds(100, mainFrame.getHeight() + 75, 880, 40);
-                applicationControlFrame.setBounds(100, mainFrame.getHeight() + 120, 780, 40);
+                applicationControlFrame.setBounds(100, mainFrame.getHeight() + 120, 880, 40);
             }
         });
 
