@@ -65,23 +65,16 @@ public final class AudioCapture implements SPLModule {
             line = (TargetDataLine) mixer.getLine(
                 new DataLine.Info(TargetDataLine.class, format));
             line.open(format);
-            line.start();
 
             int bufferSize = (int) format.getSampleRate();
-
             int frameSize = format.getFrameSize();
             byte buffer[] = new byte[bufferSize * frameSize];
 
-            //Main loop
-            while (!STOP_CAPTURE_FLAG) {
-                int[] counts = new int[frameSize];
-                for (int i = 0; i < frameSize; i++) {
-                    counts[i] = line.read(buffer, i * bufferSize, bufferSize);
-                }
+            line.start();
 
-                int checkCount = counts[0];
-                for (int count : counts) {
-                    if (count != checkCount) {
+            while (!STOP_CAPTURE_FLAG) {
+                for (int i = 0; i < frameSize; i++) {
+                    if (line.read(buffer, i * bufferSize, bufferSize) != bufferSize) {
                         logger.error("Big/low-endian pair didn't have equal number of samples");
                         throw new RuntimeException("Big/low-endian pair didn't have equal number of samples");
                     }
