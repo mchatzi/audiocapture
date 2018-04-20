@@ -4,7 +4,7 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
 
-  <groupId>com.didi.splviewer</groupId> <!--lol, what is didi? -->
+  <groupId>com.didi.splviewer</groupId>
   <artifactId>audiocapture</artifactId>
   <version>1.0-SNAPSHOT</version>
 
@@ -23,7 +23,14 @@
       <artifactId>slf4j-log4j12</artifactId>
       <version>1.7.5</version>
     </dependency>
+    <dependency>
+      <groupId>junit</groupId>
+      <artifactId>junit</artifactId>
+      <version>4.12</version>
+      <!--<scope>test</scope>-->
+    </dependency>
   </dependencies>
+
 
   <build>
     <plugins>
